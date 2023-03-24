@@ -21,7 +21,8 @@ class tft_screen final : public watch_abs
 {
 public:
     using watch_abs::watch_abs;
-    void setup();
+    void setup() override;
+    void set_backlight(bool on = true) const;
     void clear();
     void idle();
     void deep_sleep();
@@ -63,4 +64,6 @@ private:
 
     const float z_offset = -2.0;
     const float cube_size = 60.0;
+
+    bool _is_in_idle = false;
 };

@@ -3,6 +3,8 @@
 #include "tools.hpp"
 #include "watch/watch_abs.hpp"
 
+constexpr auto TIME_OUT_INPUT_TO_SLEEP_MS = SEC_IN_MS * 15; // 15 sec
+
 enum class input_type : uint8_t
 {
     NONE = 0,
@@ -14,7 +16,7 @@ class input_manager final : public watch_abs
 {
 public:
     using watch_abs::watch_abs;
-    void setup();
+    void setup() override;
     void update();
     auto get_pressed_type() -> input_type;
 
@@ -30,5 +32,5 @@ private:
     bool _is_long_press = false;
     SemaphoreHandle_t _mutex = xSemaphoreCreateMutex();
 
-    delay_time_out _to_input{1000 * 30};
+    delay_time_out _to_input{TIME_OUT_INPUT_TO_SLEEP_MS};
 };

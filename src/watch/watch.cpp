@@ -1,6 +1,8 @@
 #include "watch/watch.hpp"
 #include <Wire.h>
 
+RTC_DATA_ATTR uint8_t current_day = 0;
+
 void watch_manager::setup()
 {
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
@@ -9,16 +11,25 @@ void watch_manager::setup()
     input_m.setup();
     clk_m.setup();
     screen.setup();
+    // keep screen of deepsleep to wake from timer
+    screen.set_backlight(esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER);
     ui_m.setup();
 
-    xTaskCreatePinnedToCore(&update_gui, "update_gui", 4096 * 4, this, 6, &_handle_update_gui, 0);
-    xTaskCreatePinnedToCore(&update_gui_sec, "update_gui_sec", 2048, this, 5, &_handle_update_gui_sec, 0);
+    xTaskCreatePinnedToCore(&update_gui, "u_gui", 4096 * 4, this, 6, &_handle_update_gui, 0);
+    xTaskCreatePinnedToCore(&update_gui_sec, "u_gui_sec", 2048, this, 5, &_handle_update_gui_sec, 0);
 
     xTaskCreatePinnedToCore(&input_trigger, "input_trigger", 4096, this, 4, NULL, 1);
     xTaskCreatePinnedToCore(&update_mpu, "update_mpu", 4096, this, 3, &_handle_update_mpu, 1);
-    xTaskCreatePinnedToCore(&update_bat_state, "update_bat_state", 4096, this, tskIDLE_PRIORITY,
-                            &_handle_update_bat_state, 1);
-    xTaskCreatePinnedToCore(&update_wifi_pipeline, "update_wifi_pipe", 4096, this, 1, &_handle_update_wifi_pipeline, 1);
+    xTaskCreatePinnedToCore(&update_bat_state, "u_bat", 4096, this, tskIDLE_PRIORITY, &_handle_update_bat_state, 1);
+    xTaskCreatePinnedToCore(&update_wifi_pipeline, "u_wifi", 4096, this, 1, &_handle_update_wifi_pipeline, 1);
+}
+
+auto watch_manager::_time_to_light_sleep() -> bool
+{
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
+    const RTC_Date d = clk_m.get_clock_time();
+    xSemaphoreGive(i2c_lock);
+    return d.hour >= 7 && d.hour < 22;
 }
 
 auto watch_manager::go_to_sleep() -> bool
@@ -28,9 +39,33 @@ auto watch_manager::go_to_sleep() -> bool
         modem_sleep();
         return false;
     }
-    if (ui_m.get_page() == ui_page::running || ui_m.get_page() == ui_page::chrono || clk_m.get_chrono_running())
+    if (ui_m.get_page() == ui_page::running || ui_m.get_page() == ui_page::chrono || clk_m.get_chrono_running() ||
+        _time_to_light_sleep())
     {
         light_sleep();
+
+        switch (esp_sleep_get_wakeup_cause())
+        {
+        case ESP_SLEEP_WAKEUP_EXT0:
+            DEBUG_PRINTLN("Wakeup caused by external signal using RTC_IO");
+            break;
+        case ESP_SLEEP_WAKEUP_EXT1:
+            DEBUG_PRINTLN("Wakeup caused by external signal using RTC_CNTL");
+            break;
+        case ESP_SLEEP_WAKEUP_TIMER:
+            DEBUG_PRINTLN("Wakeup caused by timer");
+            go_to_sleep();
+            break;
+        case ESP_SLEEP_WAKEUP_TOUCHPAD:
+            DEBUG_PRINTLN("Wakeup caused by touchpad");
+            break;
+        case ESP_SLEEP_WAKEUP_ULP:
+            DEBUG_PRINTLN("Wakeup caused by ULP program");
+            break;
+        default:
+            DEBUG_PRINTLN("Wakeup was not caused by deep sleep:");
+            break;
+        }
         return true;
     }
     deep_sleep();
@@ -42,22 +77,34 @@ void watch_manager::normal_mode()
     DEBUG_PRINTLN("WAKE");
     _is_in_modem_sleep = false;
     set_need_update_ui(true);
+
     WiFi.setSleep(false);
     screen.wake_up();
-    wifi_m.activate();
+    wifi_m.setup();
+
+    update_step();
+
     ets_update_cpu_frequency(240);
 
-    xTaskCreatePinnedToCore(&update_gui, "update_gui", 4096 * 4, this, 6, &_handle_update_gui, 0);
-    xTaskCreatePinnedToCore(&update_gui_sec, "update_gui_sec", 2048, this, 5, &_handle_update_gui_sec, 0);
-
-    xTaskCreatePinnedToCore(&update_wifi_pipeline, "update_wifi_pipe", 4096, this, 1, &_handle_update_wifi_pipeline, 1);
+    /*if (_handle_update_gui == NULL)
+    {
+        xTaskCreatePinnedToCore(&update_gui, "u_gui", 4096 * 4, this, 6, &_handle_update_gui, 0);
+    }
+    if (_handle_update_gui_sec == NULL)
+    {
+        xTaskCreatePinnedToCore(&update_gui_sec, "u_gui_sec", 2048, this, 5, &_handle_update_gui_sec, 0);
+    }
+    if (_handle_update_wifi_pipeline == NULL)
+    {
+        xTaskCreatePinnedToCore(&update_wifi_pipeline, "u_wifi", 4096, this, 1, &_handle_update_wifi_pipeline, 1);
+    }*/
 }
 
 void watch_manager::modem_sleep(bool change_freq)
 {
-    SAFE_DELETE_TASK(_handle_update_wifi_pipeline);
-    SAFE_DELETE_TASK(_handle_update_gui_sec);
-    SAFE_DELETE_TASK(_handle_update_gui);
+    //SAFE_DELETE_TASK(_handle_update_wifi_pipeline);
+    //SAFE_DELETE_TASK(_handle_update_gui_sec);
+    //SAFE_DELETE_TASK(_handle_update_gui);
 
     wifi_m.deactivate(false);
     WiFi.setSleep(true);
@@ -73,7 +120,24 @@ void watch_manager::modem_sleep(bool change_freq)
 
 void watch_manager::light_sleep()
 {
-    modem_sleep(false);
+    wifi_m.deactivate(false);
+    WiFi.setSleep(true);
+    screen.idle();
+
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
+    const RTC_Date d = clk_m.get_clock_time();
+    xSemaphoreGive(i2c_lock);
+    const uint8_t c_min = d.minute;
+    const uint8_t c_sec = d.second;
+
+    int8_t min_sleep = 59 - c_min;
+    if (min_sleep < 3)
+    {
+        min_sleep = 59 + min_sleep;
+    }
+    const ulong sec_sleep = (min_sleep * T_60) + (T_60 - c_sec);
+    DEBUG_PRINTLN("ms : " + String(sec_sleep * SEC_IN_MS));
+    esp_sleep_enable_timer_wakeup(sec_sleep * SEC_IN_MS * 1000);
 
     /* Enable sleep fct */
     pinMode(IMU_INT2_PIN, GPIO_MODE_INPUT);
@@ -93,6 +157,10 @@ void watch_manager::deep_sleep()
     SAFE_DELETE_TASK(_handle_update_gui_sec);
     SAFE_DELETE_TASK(_handle_update_gui);
 
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
+    const RTC_Date d = clk_m.get_clock_time();
+    xSemaphoreGive(i2c_lock);
+
     screen.deep_sleep();
     mpu_m.light_sleep();
     wifi_m.deactivate();
@@ -102,6 +170,19 @@ void watch_manager::deep_sleep()
     pinMode(IMU_INT2_PIN, GPIO_MODE_INPUT);
 
     delay(250);
+
+    const uint8_t c_hour = d.hour;
+    const uint8_t c_min = d.minute;
+    const uint8_t c_sec = d.second;
+    int8_t min_sleep = 59 - c_min;
+    if (min_sleep < 3)
+    {
+        min_sleep = 59 + min_sleep;
+    }
+    const ulong sec_sleep = (min_sleep * T_60) + (T_60 - c_sec);
+
+    // Auto Wake up at 7h AM (sleep sec + (hour left * 60min * 60 sec * SEC_IN_MS))
+    esp_sleep_enable_timer_wakeup(((sec_sleep * SEC_IN_MS) + (((23 - c_hour) + 6) * T_60 * T_60 * SEC_IN_MS)) * 1000);
 
     esp_sleep_enable_ext1_wakeup(GPIO_SEL_33, ESP_EXT1_WAKEUP_ANY_HIGH); //  | GPIO_SEL_39
     esp_deep_sleep_start();
@@ -142,12 +223,14 @@ void watch_manager::update_gui(void* param)
                 }
                 vTaskDelay(1500 / portTICK_PERIOD_MS);
                 break;
+
             case ui_page::running:
                 xSemaphoreTake(watch->i2c_lock, portMAX_DELAY);
                 watch->mpu_m.reset_step();
                 xSemaphoreGive(watch->i2c_lock);
                 watch->set_need_update_ui(true);
                 break;
+
             case ui_page::chrono:
                 if (watch->clk_m.get_chrono_running())
                 {
@@ -157,6 +240,7 @@ void watch_manager::update_gui(void* param)
                     watch->clk_m.reset_chrono();
                 }
                 break;
+
             default:
                 break;
             }
@@ -184,7 +268,7 @@ void watch_manager::update_gui_sec(void* param)
     watch_manager* watch = reinterpret_cast<watch_manager*>(param);
     bool t = true;
     uint8_t update_sec = 0; // 0 - 4
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    vTaskDelay((1 * SEC_IN_MS) / portTICK_PERIOD_MS);
     while (true)
     {
         if ((update_sec % 2) == 0)
@@ -234,31 +318,6 @@ void watch_manager::input_trigger(void* param)
             watch->input_m.reset_to();
         }
 
-        esp_sleep_wakeup_cause_t wakeup_reason;
-
-        wakeup_reason = esp_sleep_get_wakeup_cause();
-        switch (wakeup_reason)
-        {
-        case ESP_SLEEP_WAKEUP_EXT0:
-            DEBUG_PRINTLN("Wakeup caused by external signal using RTC_IO");
-            break;
-        case ESP_SLEEP_WAKEUP_EXT1:
-            DEBUG_PRINTLN("Wakeup caused by external signal using RTC_CNTL");
-            break;
-        case ESP_SLEEP_WAKEUP_TIMER:
-            DEBUG_PRINTLN("Wakeup caused by timer");
-            break;
-        case ESP_SLEEP_WAKEUP_TOUCHPAD:
-            DEBUG_PRINTLN("Wakeup caused by touchpad");
-            break;
-        case ESP_SLEEP_WAKEUP_ULP:
-            DEBUG_PRINTLN("Wakeup caused by ULP program");
-            break;
-        default:
-            DEBUG_PRINTLN("Wakeup was not caused by deep sleep:");
-            break;
-        }
-
         watch->normal_mode();
     }
 }
@@ -298,7 +357,7 @@ void watch_manager::update_bat_state(void* param)
 void watch_manager::update_mpu(void* param)
 {
     watch_manager* watch = reinterpret_cast<watch_manager*>(param);
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    vTaskDelay((1 * SEC_IN_MS) / portTICK_PERIOD_MS);
     xSemaphoreTake(watch->i2c_lock, portMAX_DELAY);
     watch->mpu_m.setup();
     xSemaphoreGive(watch->i2c_lock);
@@ -308,6 +367,23 @@ void watch_manager::update_mpu(void* param)
         xSemaphoreTake(watch->i2c_lock, portMAX_DELAY);
         watch->mpu_m.update();
         xSemaphoreGive(watch->i2c_lock);
+    }
+}
+
+void watch_manager::update_step()
+{
+    const uint8_t c_day = current_day;
+
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
+    current_day = clk_m.get_clock_time().day;
+    xSemaphoreGive(i2c_lock);
+
+    /* New Day */
+    if (c_day != current_day && c_day != 0 && current_day != 0)
+    {
+        DEBUG_PRINTLN("New day : " + String(c_day) + " !=" + String(current_day));
+        mpu_m.reset_step();
+        set_need_update_ui(true);
     }
 }
 
@@ -325,20 +401,22 @@ void watch_manager::update_wifi_pipeline(void* param)
         {
             if (watch->wifi_m.is_connected() && to_pipeline.is_time_out())
             {
-                // sleep 30 min if ok else 1 min
                 xSemaphoreTake(watch->i2c_lock, portMAX_DELAY);
                 watch->clk_m.set_time(watch->ntp_m.sync_time());
                 xSemaphoreGive(watch->i2c_lock);
+
+                watch->update_step();
+
                 if (weather_api::update())
                 {
-                    to_pipeline.reset_delay(1000 * 60 * 30); // 30min
+                    to_pipeline.reset_delay(SEC_IN_MS * 60 * 30); // 30min
                 } else
                 {
-                    to_pipeline.reset_delay(1000 * 10); // 10 sec
+                    to_pipeline.reset_delay(SEC_IN_MS * 10); // 10 sec
                 }
             }
             watch->set_need_update_ui(true);
         }
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        vTaskDelay((2 * SEC_IN_MS) / portTICK_PERIOD_MS);
     }
 }

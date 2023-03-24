@@ -11,7 +11,7 @@ class ntp_manager final : public watch_abs
 {
 public:
     using watch_abs::watch_abs;
-    void setup();
+    void setup() override;
     auto sync_time() -> RTC_Date;
 
 private:

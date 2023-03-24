@@ -9,7 +9,7 @@ class battery_manager final : public watch_abs
 {
 public:
     using watch_abs::watch_abs;
-    void setup();
+    void setup() override;
     void update();
     void update_light();
 

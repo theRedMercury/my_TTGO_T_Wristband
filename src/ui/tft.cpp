@@ -13,29 +13,30 @@ void tft_screen::setup()
     // const uint8_t channel = 0;
     // ledcSetup(channel, 5000, 8);
     // ledcAttachPin(TFT_BL, channel);
-    // ledcWrite(channel, 185);
+    // ledcWrite(channel, 255);
 
-    digitalWrite(TFT_BL, 1);
-
-    _tft.writecommand(ST7735_SWRESET); /* soft reset */
-    delay(150);
+    //_tft.writecommand(ST7735_SWRESET); /* soft reset */
+    // delay(150);
     _tft.writecommand(ST7735_DISPON); /* display on */
-    delay(150);
+    delay(120);
     _tft.writecommand(ST7735_SLPOUT); /* sleep out */
-    delay(100);
+    delay(120);
     // _tft.writecommand(ST7735_IDMOFF);
 
     _tft.init();
-
     _tft.setRotation(0);
     _tft.setSwapBytes(true);
     _tft.fillScreen(TFT_BLACK);
     // _tft.setTextDatum(TL_DATUM);
-
     // _tft.writecommand(ST7735_COLMOD);
     // _tft.writedata(0x05); // 3 / 5 / 6 (color depth) RGB666
-
+    _is_in_idle = false;
     DEBUG_PRINTLN("done");
+}
+
+void tft_screen::set_backlight(bool on) const
+{
+    digitalWrite(TFT_BL, on ? HIGH : LOW);
 }
 
 void tft_screen::clear()
@@ -46,12 +47,14 @@ void tft_screen::clear()
 
 void tft_screen::idle()
 {
-    ledcSetup(8, 5000, 8);    // 0-15, 5000, 8
-    ledcAttachPin(TFT_BL, 8); // TFT_BL, 0 - 15
-    ledcWrite(8, 1);          // 0-15, 0-255 (with 8 bit resolution)
+    // ledcSetup(8, 5000, 8);    // 0-15, 5000, 8
+    // ledcAttachPin(TFT_BL, 8); // TFT_BL, 0 - 15
+    // ledcWrite(8, 1);          // 0-15, 0-255 (with 8 bit resolution)
+    set_backlight(false);
 
-    _tft.writecommand(ST7735_IDMON); /* soft reset */
-    delay(150);
+    _tft.writecommand(ST7735_IDMON); /* IDLE ON */
+    delay(120);
+    _is_in_idle = true;
 }
 void tft_screen::deep_sleep()
 {
@@ -71,19 +74,30 @@ void tft_screen::deep_sleep()
         delay(2);
     }
 
-    digitalWrite(TFT_BL, 0);
-    _tft.writecommand(ST7735_SWRESET); /* soft reset */
-    delay(150);
+    set_backlight(false);
+    //_tft.writecommand(ST7735_SWRESET); /* soft reset */
+    // delay(150);
     _tft.writecommand(ST7735_SLPIN); /* sleep in */
-    delay(150);
+    delay(120);
     _tft.writecommand(ST7735_DISPOFF); /* display off */
-    delay(150);
+    delay(120);
+    _is_in_idle = false;
 }
 
 void tft_screen::wake_up()
 {
-    setup();
-    clear();
+    if (_is_in_idle)
+    {
+        // ledcSetup(8, 5000, 8);    // 0-15, 5000, 8
+        // ledcAttachPin(TFT_BL, 8); // TFT_BL, 0 - 15
+        // ledcWrite(8, 255);        // 0-15, 0-255 (with 8 bit resolution)
+        set_backlight(true);
+        _tft.writecommand(ST7735_IDMOFF); /* IDLE OFF */
+        delay(120);
+    } else
+    {
+        setup();
+    }
 }
 
 void tft_screen::play_anim_transition()
@@ -101,7 +115,6 @@ void tft_screen::play_anim_transition()
 void tft_screen::show_main_page(const uint8_t hour, const uint8_t minute, const uint8_t day, const uint8_t month,
                                 bool utc)
 {
-
     _show_header(day, month);
     _draw_clock(hour, minute);
 
@@ -226,7 +239,7 @@ void tft_screen::_draw_date(const uint8_t day, const uint8_t month)
 
     _tft.setTextColor(TFT_WHITE, TFT_BLACK);
     char date_m[2]{' ', ' '};
-    sprintf(date_m, "%02d", month);
+    sprintf(date_m, "%02d", tools::clamp(month, (uint8_t)1, (uint8_t)12));
     _tft.drawString(date_m, 44, 2, 2);
 }
 
@@ -275,10 +288,8 @@ void tft_screen::show_battery_page(float voltage, uint8_t percentage, bool charg
 
         char voltageString[5]{' ', ' ', ' ', ' ', ' '};
         sprintf(voltageString, "%1.2fv", voltage);
-        _tft.drawCentreString(voltageString, 40, 150, 1);
+        _tft.drawCentreString(voltageString, 40, 142, 1);
     }
-
-    return;
 }
 
 void tft_screen::show_weather_page()
@@ -488,9 +499,9 @@ void tft_screen::show_chrono_page()
     }
 
     const ulong tm = _watch->clk_m.get_chrono_time();
-    const uint8_t h = tools::clamp(static_cast<int>((tm / (1000 * 60 * 60)) % 24), 0, 23);
-    const uint8_t m = tools::clamp(static_cast<int>((tm / (1000 * 60)) % 60), 0, 59);
-    const uint8_t s = tools::clamp(static_cast<int>((tm / 1000) % 60), 0, 59);
+    const uint8_t h = tools::clamp(static_cast<int>((tm / (SEC_IN_MS * T_60 * T_60)) % 24), 0, 23);
+    const uint8_t m = tools::clamp(static_cast<int>((tm / (SEC_IN_MS * T_60)) % T_60), 0, 59);
+    const uint8_t s = tools::clamp(static_cast<int>((tm / SEC_IN_MS) % T_60), 0, 59);
     char temp[5]{' ', ' ', ' ', ' ', ' '};
 
     if (h > 0)
@@ -505,7 +516,7 @@ void tft_screen::show_chrono_page()
     _tft.drawCentreString(temp, 40, 48, 4);
 
     _tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    sprintf(temp, "%03d", tools::clamp(static_cast<int>(tm % 1000), 0, 999));
+    sprintf(temp, "%03d", tools::clamp(static_cast<int>(tm % SEC_IN_MS), 0, 999));
     _tft.drawCentreString(temp, 40, 76, 2);
 }
 

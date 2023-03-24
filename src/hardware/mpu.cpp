@@ -15,7 +15,7 @@ void mpu_manager::setup()
             DEBUG_PRINTLN("Unable to communicate with MPU-9250");
             DEBUG_PRINTLN("Check connections, and try again.");
             DEBUG_PRINTLN();
-            delay(5000);
+            delay(SEC_IN_MS * 5);
         }
     }
     ulong s = _imu.dmpGetPedometerSteps();
@@ -145,6 +145,7 @@ auto mpu_manager::get_step_time() const -> ulong
 
 void mpu_manager::reset_step()
 {
+    DEBUG_PRINTLN("reset_step()");
     steps = 0;
     step_time = 0;
     _imu.dmpSetPedometerSteps(steps);

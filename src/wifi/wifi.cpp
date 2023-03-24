@@ -6,9 +6,11 @@
 void wifi_manager::setup()
 {
     DEBUG_PRINT("wifi_manager setup : ");
-    _signal = static_cast<wifi_signal>(epprom_mem::get_wifi_mem());
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    _signal =  tools::clamp(static_cast<wifi_signal>(epprom_mem::get_wifi_mem()), wifi_signal::S_OFF, wifi_signal::S_ON);
     _state_change = true;
     _need_update = true;
+    xSemaphoreGive(_lock);
     DEBUG_PRINTLN("done");
 }
 
@@ -39,8 +41,9 @@ void wifi_manager::update()
     {
         return;
     }
-    const int8_t _strenght = WiFi.RSSI();
 
+    xSemaphoreTake(_lock, portMAX_DELAY);
+    const int8_t _strenght = WiFi.RSSI();
     if (_strenght > -50)
     {
         _signal = wifi_signal::S_EXCEL;
@@ -60,8 +63,8 @@ void wifi_manager::update()
             }
         }
     }
-
     _state_change = old_signal != _signal;
+    xSemaphoreGive(_lock);
 }
 
 auto wifi_manager::_connect() -> bool
@@ -118,18 +121,22 @@ auto wifi_manager::get_strenght() const -> wifi_signal
 void wifi_manager::activate()
 {
     DEBUG_PRINTLN("activate");
+    xSemaphoreTake(_lock, portMAX_DELAY);
     _signal = wifi_signal::S_ON;
     epprom_mem::store_wifi_mem(static_cast<uint8_t>(_signal));
     _need_update = true;
+    xSemaphoreGive(_lock);
 }
 
 void wifi_manager::deactivate(bool save)
 {
     DEBUG_PRINTLN("deactivate");
+    xSemaphoreTake(_lock, portMAX_DELAY);
     _signal = wifi_signal::S_OFF;
     if (save)
     {
         epprom_mem::store_wifi_mem(static_cast<uint8_t>(_signal));
     }
     _need_update = true;
+    xSemaphoreGive(_lock);
 }

@@ -182,7 +182,7 @@ private:
         uint8_t index = 0;
         while (_i2cPort->available())
             data[index++] = _i2cPort->read();
-        return 0;
+        return index;
     }
     int _writeByte(uint8_t reg, uint8_t nbytes, uint8_t* data)
     {

@@ -108,7 +108,9 @@ void main_ui::_draw_charging_page()
 
 void main_ui::_draw_main_page()
 {
+    xSemaphoreTake(_watch->i2c_lock, portMAX_DELAY);
     const RTC_Date d = _watch->clk_m.get_clock_time();
+    xSemaphoreGive(_watch->i2c_lock);
     _watch->screen.show_main_page(d.hour, d.minute, d.day, d.month, true);
     _need_redraw = false;
 }

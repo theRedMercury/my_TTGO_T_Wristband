@@ -19,5 +19,5 @@ void setup()
 
 void loop()
 {
-    delay(2000);
+    delay(SEC_IN_MS * 2);
 }

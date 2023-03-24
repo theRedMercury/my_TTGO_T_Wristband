@@ -36,6 +36,8 @@ public:
     auto get_need_update_ui() const -> bool;
     void set_need_update_ui(bool update);
 
+    void update_step();
+
     static void update_gui(void* param);
     static void update_gui_sec(void* param);
     static void update_bat_state(void* param);
@@ -60,6 +62,8 @@ public:
     }
 
 private:
+    auto _time_to_light_sleep() -> bool;
+    
     TaskHandle_t _handle_update_gui = NULL;
     TaskHandle_t _handle_update_gui_sec = NULL;
     TaskHandle_t _handle_update_mpu = NULL;

@@ -2,7 +2,7 @@
 #include "hardware/hal.hpp"
 #include "tools.hpp"
 
-constexpr auto LONG_PRESS = 1000; // ms
+constexpr auto LONG_PRESS = SEC_IN_MS * 1; // 1 sec
 
 void input_manager::setup()
 {

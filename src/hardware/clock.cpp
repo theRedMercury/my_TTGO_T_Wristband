@@ -2,8 +2,6 @@
 #include "hardware/hal.hpp"
 #include "watch/watch.hpp"
 
-RTC_DATA_ATTR uint8_t current_day = 0;
-
 void clock_manager::setup()
 {
     DEBUG_PRINT("clock_manager setup : ");
@@ -23,16 +21,8 @@ void clock_manager::deep_sleep()
 
 void clock_manager::set_time(RTC_Date datetime)
 {
-    const uint8_t c_day = current_day;
-    _rtc.setDateTime(datetime);
-    current_day = datetime.day;
 
-    /* New Day */
-    if (c_day != current_day)
-    {
-        _watch->mpu_m.reset_step();
-        _watch->set_need_update_ui(true);
-    }
+    _rtc.setDateTime(datetime);
 }
 
 auto clock_manager::get_clock_time() -> RTC_Date
@@ -87,7 +77,7 @@ void clock_manager::stop_chrono()
     xSemaphoreTake(_lock, portMAX_DELAY);
     _chrono_time_stop = millis();
     _chrono_running = false;
-    _running_to.reset_delay(1000 * 60);
+    _running_to.reset_delay(SEC_IN_MS * T_60); // 1 min
     xSemaphoreGive(_lock);
 }
 
@@ -97,13 +87,13 @@ void clock_manager::reset_chrono()
     _chrono_time_s = 0;
     _chrono_time_stop = 0;
     _chrono_running = false;
-    _running_to.reset_delay(3000);
+    _running_to.reset_delay(SEC_IN_MS * 3);
     xSemaphoreGive(_lock);
 }
 
 void clock_manager::reset_to()
 {
-    _running_to.reset_delay(3000);
+    _running_to.reset_delay(SEC_IN_MS * 3);
 }
 
 auto clock_manager::get_chrono_time() const -> ulong

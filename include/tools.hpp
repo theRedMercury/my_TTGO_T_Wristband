@@ -3,6 +3,9 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 
+constexpr auto SEC_IN_MS = 1000;
+constexpr auto T_60 = 60;
+
 // #define DEBUG_MODE
 ////////////////////////////////////////////////////////
 #ifdef DEBUG_MODE
@@ -28,9 +31,10 @@
 template <typename T>
 constexpr void SAFE_DELETE_TASK(T t)
 {
-    if (t)
+    if (t != NULL)
     {
         vTaskDelete(t);
+        t = NULL;
     }
 }
 

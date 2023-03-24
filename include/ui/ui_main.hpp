@@ -20,7 +20,7 @@ class main_ui final : public watch_abs
 {
 public:
     using watch_abs::watch_abs;
-    void setup();
+    void setup() override;
 
     void next_page();
     auto get_page() const -> ui_page;

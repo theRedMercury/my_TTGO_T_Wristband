@@ -10,7 +10,7 @@ class clock_manager final : public watch_abs
 {
 public:
     using watch_abs::watch_abs;
-    void setup();
+    void setup() override;
     void deep_sleep();
     void set_time(RTC_Date datetime);
 
@@ -32,7 +32,7 @@ private:
     bool _chrono_running = false;
     ulong _chrono_time_s = 0;
     ulong _chrono_time_stop = 0;
-    delay_time_out _running_to{3000};
+    delay_time_out _running_to{SEC_IN_MS * 3};
 
     SemaphoreHandle_t _lock = xSemaphoreCreateMutex();
 };
