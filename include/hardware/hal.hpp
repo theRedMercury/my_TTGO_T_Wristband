@@ -27,7 +27,7 @@ constexpr auto ACCEL_CALIBRATION_BASE_ADDRESS = 0x30;
 constexpr auto RTC_INT_PIN = GPIO_NUM_34;
 
 /* Battery */
-constexpr float BATTERY_MIN_V = 3.0F;
+constexpr float BATTERY_MIN_V = 3.2F;
 constexpr float BATTERY_MAX_V = 4.1F;
 constexpr auto LED_PIN = GPIO_NUM_4;
 constexpr auto CHARGE_PIN = GPIO_NUM_32;
@@ -35,6 +35,8 @@ constexpr auto BATT_ADC_PIN = GPIO_NUM_35;
 
 /* EEPROM */
 constexpr int WIFI_STATE_ADDRESS = 0x00;
+constexpr int STEPS_ADDRESS = WIFI_STATE_ADDRESS + sizeof(uint8_t);
+constexpr int STEPS_TIME_ADDRESS = STEPS_ADDRESS + sizeof(ulong);
 
 /* TFT screen */
 #define SEG7_BACKGROUND 0x0821

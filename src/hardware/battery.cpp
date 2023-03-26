@@ -37,9 +37,15 @@ void battery_manager::update_light()
     const float old_light = _light;
     _light = _is_charging ? _light + 0.01F : 0;
 
-    if (old_light != _light)
+    if (_is_charging && get_percentage() == 100)
     {
-        analogWrite(LED_PIN, abs(sinf(_light) * 256.F));
+        analogWrite(LED_PIN, 255);
+    } else
+    {
+        if (old_light != _light)
+        {
+            analogWrite(LED_PIN, static_cast<int>(abs(sinf(_light) * 255.F)));
+        }
     }
 }
 

@@ -1,4 +1,6 @@
 #include "watch/watch.hpp"
+#include "hardware/eeprom.hpp"
+
 #include <Wire.h>
 
 RTC_DATA_ATTR uint8_t current_day = 0;
@@ -29,6 +31,7 @@ auto watch_manager::_time_to_light_sleep() -> bool
     xSemaphoreTake(i2c_lock, portMAX_DELAY);
     const RTC_Date d = clk_m.get_clock_time();
     xSemaphoreGive(i2c_lock);
+
     return d.hour >= 7 && d.hour < 22;
 }
 
@@ -39,6 +42,7 @@ auto watch_manager::go_to_sleep() -> bool
         modem_sleep();
         return false;
     }
+
     if (ui_m.get_page() == ui_page::running || ui_m.get_page() == ui_page::chrono || clk_m.get_chrono_running() ||
         _time_to_light_sleep())
     {
@@ -54,6 +58,8 @@ auto watch_manager::go_to_sleep() -> bool
             break;
         case ESP_SLEEP_WAKEUP_TIMER:
             DEBUG_PRINTLN("Wakeup caused by timer");
+            epprom_mem::store_steps_mem(mpu_m.get_steps());
+            epprom_mem::store_step_time_mem(mpu_m.get_step_time());
             go_to_sleep();
             break;
         case ESP_SLEEP_WAKEUP_TOUCHPAD:
@@ -102,9 +108,9 @@ void watch_manager::normal_mode()
 
 void watch_manager::modem_sleep(bool change_freq)
 {
-    //SAFE_DELETE_TASK(_handle_update_wifi_pipeline);
-    //SAFE_DELETE_TASK(_handle_update_gui_sec);
-    //SAFE_DELETE_TASK(_handle_update_gui);
+    // SAFE_DELETE_TASK(_handle_update_wifi_pipeline);
+    // SAFE_DELETE_TASK(_handle_update_gui_sec);
+    // SAFE_DELETE_TASK(_handle_update_gui);
 
     wifi_m.deactivate(false);
     WiFi.setSleep(true);
@@ -162,9 +168,15 @@ void watch_manager::deep_sleep()
     xSemaphoreGive(i2c_lock);
 
     screen.deep_sleep();
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
     mpu_m.light_sleep();
+    xSemaphoreGive(i2c_lock);
+
     wifi_m.deactivate();
+
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
     clk_m.deep_sleep();
+    xSemaphoreGive(i2c_lock);
 
     /* Enable sleep fct */
     pinMode(IMU_INT2_PIN, GPIO_MODE_INPUT);
@@ -382,7 +394,9 @@ void watch_manager::update_step()
     if (c_day != current_day && c_day != 0 && current_day != 0)
     {
         DEBUG_PRINTLN("New day : " + String(c_day) + " !=" + String(current_day));
+        xSemaphoreTake(i2c_lock, portMAX_DELAY);
         mpu_m.reset_step();
+        xSemaphoreGive(i2c_lock);
         set_need_update_ui(true);
     }
 }
@@ -409,7 +423,7 @@ void watch_manager::update_wifi_pipeline(void* param)
 
                 if (weather_api::update())
                 {
-                    to_pipeline.reset_delay(SEC_IN_MS * 60 * 30); // 30min
+                    to_pipeline.reset_delay(SEC_IN_MS * T_60 * 30); // 30min
                 } else
                 {
                     to_pipeline.reset_delay(SEC_IN_MS * 10); // 10 sec

@@ -18,15 +18,23 @@ void mpu_manager::setup()
             delay(SEC_IN_MS * 5);
         }
     }
+
     ulong s = _imu.dmpGetPedometerSteps();
-    if (s > 0)
+    if (s > 0 && s < 999999)
     {
         steps = s;
+    } else
+    {
+        steps = epprom_mem::get_steps_mem();
     }
+
     s = _imu.dmpGetPedometerTime();
-    if (s > 0)
+    if (s > 0 && s < 999999)
     {
         step_time = s;
+    } else
+    {
+        step_time = epprom_mem::get_steps_time_mem();
     }
 
     _imu.setSensors(INV_XYZ_GYRO | INV_XYZ_ACCEL | INV_XYZ_COMPASS);
@@ -58,13 +66,16 @@ void mpu_manager::setup()
     // setSampleRate. Acceptable values range from 4Hz to 1kHz
     // _imu.setSampleRate(100); // Set sample rate to 100Hz
 
+    _imu.selfTest();
+
     // Use configureFifo to set which sensors should be stored
     // in the buffer.
     // Parameter to this function can be: INV_XYZ_GYRO,
     // INV_XYZ_ACCEL, INV_X_GYRO, INV_Y_GYRO, or INV_Z_GYRO
     //_imu.configureFifo(INV_XYZ_GYRO | INV_XYZ_ACCEL | INV_XYZ_COMPASS);
 
-    _imu.dmpBegin(DMP_FEATURE_PEDOMETER | DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL, 10);
+    _imu.dmpBegin(DMP_FEATURE_PEDOMETER | DMP_FEATURE_6X_LP_QUAT | DMP_FEATURE_GYRO_CAL | DMP_FEATURE_SEND_CAL_GYRO,
+                  10);
     _imu.dmpSetPedometerSteps(steps);
     _imu.dmpSetPedometerTime(step_time);
 }
@@ -84,14 +95,11 @@ void mpu_manager::update()
         accelX = _imu.calcAccel(_imu.ax);
         accelY = _imu.calcAccel(_imu.ay);
         accelZ = _imu.calcAccel(_imu.az);
-        gyroX = _imu.calcGyro(_imu.gx);
-        gyroY = _imu.calcGyro(_imu.gy);
-        gyroZ = _imu.calcGyro(_imu.gz);
+
         magX = _imu.calcMag(_imu.mx);
         magY = _imu.calcMag(_imu.my);
         magZ = _imu.calcMag(_imu.mz);
         temp = static_cast<float>(_imu.temperature);
-        _imu.computeCompassHeading();
 
         if (_imu.fifoAvailable())
         {
@@ -105,6 +113,11 @@ void mpu_manager::update()
                 roll = _imu.roll;
                 pitch = _imu.pitch;
                 yaw = _imu.yaw;
+
+                gyroX = _imu.calcGyro(_imu.gx);
+                gyroY = _imu.calcGyro(_imu.gy);
+                gyroZ = _imu.calcGyro(_imu.gz);
+                _imu.computeCompassHeading();
 
                 /*DEBUG_PRINTLN("R/P/Y: " + String(roll) + ", "
                   + String(pitch) + ", " + String(yaw));*/
