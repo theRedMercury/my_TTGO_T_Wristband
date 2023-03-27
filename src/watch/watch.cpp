@@ -91,27 +91,10 @@ void watch_manager::normal_mode()
     update_step();
 
     ets_update_cpu_frequency(240);
-
-    /*if (_handle_update_gui == NULL)
-    {
-        xTaskCreatePinnedToCore(&update_gui, "u_gui", 4096 * 4, this, 6, &_handle_update_gui, 0);
-    }
-    if (_handle_update_gui_sec == NULL)
-    {
-        xTaskCreatePinnedToCore(&update_gui_sec, "u_gui_sec", 2048, this, 5, &_handle_update_gui_sec, 0);
-    }
-    if (_handle_update_wifi_pipeline == NULL)
-    {
-        xTaskCreatePinnedToCore(&update_wifi_pipeline, "u_wifi", 4096, this, 1, &_handle_update_wifi_pipeline, 1);
-    }*/
 }
 
 void watch_manager::modem_sleep(bool change_freq)
 {
-    // SAFE_DELETE_TASK(_handle_update_wifi_pipeline);
-    // SAFE_DELETE_TASK(_handle_update_gui_sec);
-    // SAFE_DELETE_TASK(_handle_update_gui);
-
     wifi_m.deactivate(false);
     WiFi.setSleep(true);
     screen.idle();
@@ -133,9 +116,9 @@ void watch_manager::light_sleep()
     xSemaphoreTake(i2c_lock, portMAX_DELAY);
     const RTC_Date d = clk_m.get_clock_time();
     xSemaphoreGive(i2c_lock);
+
     const uint8_t c_min = d.minute;
     const uint8_t c_sec = d.second;
-
     int8_t min_sleep = 59 - c_min;
     if (min_sleep < 3)
     {
@@ -236,11 +219,14 @@ void watch_manager::update_gui(void* param)
                 vTaskDelay(1500 / portTICK_PERIOD_MS);
                 break;
 
-            case ui_page::running:
+            case ui_page::compass:
                 xSemaphoreTake(watch->i2c_lock, portMAX_DELAY);
-                watch->mpu_m.reset_step();
+                watch->mpu_m.calibrate();
                 xSemaphoreGive(watch->i2c_lock);
-                watch->set_need_update_ui(true);
+                break;
+
+            case ui_page::running:
+                watch->reset_mpu_step();
                 break;
 
             case ui_page::chrono:
@@ -394,11 +380,18 @@ void watch_manager::update_step()
     if (c_day != current_day && c_day != 0 && current_day != 0)
     {
         DEBUG_PRINTLN("New day : " + String(c_day) + " !=" + String(current_day));
-        xSemaphoreTake(i2c_lock, portMAX_DELAY);
-        mpu_m.reset_step();
-        xSemaphoreGive(i2c_lock);
-        set_need_update_ui(true);
+        reset_mpu_step();
     }
+}
+
+void watch_manager::reset_mpu_step()
+{
+    xSemaphoreTake(i2c_lock, portMAX_DELAY);
+    mpu_m.reset_step();
+    xSemaphoreGive(i2c_lock);
+    epprom_mem::store_steps_mem(mpu_m.get_steps());
+    epprom_mem::store_step_time_mem(mpu_m.get_step_time());
+    set_need_update_ui(true);
 }
 
 void watch_manager::update_wifi_pipeline(void* param)

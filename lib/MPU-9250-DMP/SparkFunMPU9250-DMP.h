@@ -76,6 +76,9 @@ public:
     float pitch, roll, yaw;
     float heading;
 
+    float gyroBias[3] = {0, 0, 0};
+    float accelBias[3] = {0, 0, 0};
+
     MPU9250_DMP();
 
     // begin(void) -- Verifies communication with the MPU-9250 and the AK8963,
@@ -315,14 +318,14 @@ public:
 
     // dmpGetPedometerSteps -- Get number of steps in pedometer register
     // Output: Number of steps sensed
-    unsigned long dmpGetPedometerSteps(void);
+    void dmpGetPedometerSteps(unsigned long& steps);
     // dmpSetPedometerSteps -- Set number of steps to a value
     // Input: Desired number of steps to begin incrementing from
     // Output: INV_SUCCESS (0) on success, otherwise error
     inv_error_t dmpSetPedometerSteps(unsigned long steps);
     // dmpGetPedometerTime -- Get number of milliseconds ellapsed over stepping
     // Output: Number of milliseconds where steps were detected
-    unsigned long dmpGetPedometerTime(void);
+    void dmpGetPedometerTime(unsigned long& time);
     // dmpSetPedometerTime -- Set number time to begin incrementing step time counter from
     // Input: Desired number of milliseconds
     // Output: INV_SUCCESS (0) on success, otherwise error
@@ -366,6 +369,8 @@ public:
     //         Bit pos 1: accel
     //         Bit pos 2: mag
     int selfTest(unsigned char debug = 0);
+
+    void calibrate();
 
 private:
     unsigned short _aSense;

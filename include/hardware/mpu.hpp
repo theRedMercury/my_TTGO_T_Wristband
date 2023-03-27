@@ -13,6 +13,7 @@ public:
     void update();
     void light_sleep();
     void deep_sleep();
+    void calibrate();
 
     auto get_heading() const -> int16_t;
 

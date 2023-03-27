@@ -3289,3 +3289,12 @@ lp_int_restore:
 /**
  *  @}
  */
+void read_register(unsigned char reg_address, unsigned char count, unsigned char* dest)
+{
+    i2c_read(st.hw->addr, reg_address, count, dest);
+}
+
+void write_register(unsigned char reg_address, unsigned char data)
+{
+    i2c_write(st.hw->addr, reg_address, 1, &data);
+}

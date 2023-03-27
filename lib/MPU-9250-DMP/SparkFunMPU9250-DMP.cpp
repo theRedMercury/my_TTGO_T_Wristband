@@ -362,6 +362,178 @@ int MPU9250_DMP::selfTest(unsigned char debug)
     return mpu_run_self_test(gyro, accel);
 }
 
+void MPU9250_DMP::calibrate()
+{
+    byte data[12]; // data array to hold accelerometer and gyro x, y, z, data
+    unsigned short ii, packet_count, fifo_count;
+    long gyro_bias[3] = {0, 0, 0}, accel_bias[3] = {0, 0, 0};
+
+    // ----- reset device
+    write_register(MPU9250_PWR_MGMT_1, 0x80); // Write a one to bit 7 reset bit; toggle reset device
+    delay(100);
+
+    // ----- get stable time source; Auto select clock source to be PLL gyroscope reference if ready
+    // else use the internal oscillator, bits 2:0 = 001
+    write_register(MPU9250_PWR_MGMT_1, 0x01);
+    write_register(MPU9250_PWR_MGMT_2, 0x00);
+    delay(200);
+
+    // ----- Configure device for bias calculation
+    write_register(MPU9250_INT_ENABLE, 0x00);   // Disable all interrupts
+    write_register(MPU9250_FIFO_EN, 0x00);      // Disable FIFO
+    write_register(MPU9250_PWR_MGMT_1, 0x00);   // Turn on internal clock source
+    write_register(MPU9250_I2C_MST_CTRL, 0x00); // Disable I2C master
+    write_register(MPU9250_USER_CTRL, 0x00);    // Disable FIFO and I2C master modes
+    write_register(MPU9250_USER_CTRL, 0x0C);    // Reset FIFO and DMP
+    delay(15);
+
+    // ----- Configure MPU6050 gyro and accelerometer for bias calculation
+    write_register(MPU9250_CONFIG, 0x01);       // Set low-pass filter to 188 Hz
+    write_register(MPU9250_SMPLRT_DIV, 0x00);   // Set sample rate to 1 kHz
+    write_register(MPU9250_GYRO_CONFIG, 0x00);  // Set gyro full-scale to 250 degrees per second, maximum sensitivity
+    write_register(MPU9250_ACCEL_CONFIG, 0x00); // Set accelerometer full-scale to 2 g, maximum sensitivity
+
+    unsigned short gyrosensitivity = 131;    // = 131 LSB/degrees/sec
+    unsigned short accelsensitivity = 16384; // = 16384 LSB/g
+
+    // ----- Configure FIFO to capture accelerometer and gyro data for bias calculation
+    write_register(MPU9250_USER_CTRL, 0x40); // Enable FIFO
+    write_register(MPU9250_FIFO_EN,
+                   0x78); // Enable gyro and accelerometer sensors for FIFO  (max size 512 bytes in MPU-9150)
+    delay(40);            // accumulate 40 samples in 40 milliseconds = 480 bytes
+
+    // ----- At end of sample accumulation, turn off FIFO sensor read
+    write_register(MPU9250_FIFO_EN, 0x00);           // Disable gyro and accelerometer sensors for FIFO
+    read_register(MPU9250_FIFO_COUNTH, 2, &data[0]); // read FIFO sample count
+    fifo_count = ((unsigned short)data[0] << 8) | data[1];
+    packet_count = fifo_count / 12; // How many sets of full gyro and accelerometer data for averaging
+
+    for (ii = 0; ii < packet_count; ii++)
+    {
+        short accel_temp[3] = {0, 0, 0}, gyro_temp[3] = {0, 0, 0};
+        read_register(MPU9250_FIFO_R_W, 12, &data[0]);            // read data for averaging
+        accel_temp[0] = (short)(((short)data[0] << 8) | data[1]); // Form signed 16-bit integer for each sample in FIFO
+        accel_temp[1] = (short)(((short)data[2] << 8) | data[3]);
+        accel_temp[2] = (short)(((short)data[4] << 8) | data[5]);
+        gyro_temp[0] = (short)(((short)data[6] << 8) | data[7]);
+        gyro_temp[1] = (short)(((short)data[8] << 8) | data[9]);
+        gyro_temp[2] = (short)(((short)data[10] << 8) | data[11]);
+
+        accel_bias[0] +=
+            (long)accel_temp[0]; // Sum individual signed 16-bit biases to get accumulated signed 32-bit biases
+        accel_bias[1] += (long)accel_temp[1];
+        accel_bias[2] += (long)accel_temp[2];
+        gyro_bias[0] += (long)gyro_temp[0];
+        gyro_bias[1] += (long)gyro_temp[1];
+        gyro_bias[2] += (long)gyro_temp[2];
+    }
+    accel_bias[0] /= (long)packet_count; // Normalize sums to get average count biases
+    accel_bias[1] /= (long)packet_count;
+    accel_bias[2] /= (long)packet_count;
+    gyro_bias[0] /= (long)packet_count;
+    gyro_bias[1] /= (long)packet_count;
+    gyro_bias[2] /= (long)packet_count;
+
+    if (accel_bias[2] > 0L)
+    {
+        accel_bias[2] -= (long)accelsensitivity; // Remove gravity from the z-axis accelerometer bias calculation
+    } else
+    {
+        accel_bias[2] += (long)accelsensitivity;
+    }
+
+    // ----- Construct the gyro biases for push to the hardware gyro bias registers, which are reset to zero upon device
+    // startup
+    data[0] = (-gyro_bias[0] / 4 >> 8) &
+              0xFF; // Divide by 4 to get 32.9 LSB per deg/s to conform to expected bias input format
+    data[1] = (-gyro_bias[0] / 4) & 0xFF; // Biases are additive, so change sign on calculated average gyro biases
+    data[2] = (-gyro_bias[1] / 4 >> 8) & 0xFF;
+    data[3] = (-gyro_bias[1] / 4) & 0xFF;
+    data[4] = (-gyro_bias[2] / 4 >> 8) & 0xFF;
+    data[5] = (-gyro_bias[2] / 4) & 0xFF;
+
+    // ----- Push gyro biases to hardware registers
+    write_register(MPU9250_XG_OFFSET_H, data[0]);
+    write_register(MPU9250_XG_OFFSET_L, data[1]);
+    write_register(MPU9250_YG_OFFSET_H, data[2]);
+    write_register(MPU9250_YG_OFFSET_L, data[3]);
+    write_register(MPU9250_ZG_OFFSET_H, data[4]);
+    write_register(MPU9250_ZG_OFFSET_L, data[5]);
+
+    // ----- Output scaled gyro biases for display in the main program
+    gyroBias[0] = (float)gyro_bias[0] / (float)gyrosensitivity;
+    gyroBias[1] = (float)gyro_bias[1] / (float)gyrosensitivity;
+    gyroBias[2] = (float)gyro_bias[2] / (float)gyrosensitivity;
+
+    // Construct the accelerometer biases for push to the hardware accelerometer bias registers. These registers contain
+    // factory trim values which must be added to the calculated accelerometer biases; on boot up these registers will
+    // hold non-zero values. In addition, bit 0 of the lower byte must be preserved since it is used for temperature
+    // compensation calculations. Accelerometer bias registers expect bias input as 2048 LSB per g, so that
+    // the accelerometer biases calculated above must be divided by 8.
+
+    long accel_bias_reg[3] = {0, 0, 0};              // A place to hold the factory accelerometer trim biases
+    read_register(MPU9250_XA_OFFSET_H, 2, &data[0]); // Read factory accelerometer trim values
+    accel_bias_reg[0] = (long)(((short)data[0] << 8) | data[1]);
+    read_register(MPU9250_YA_OFFSET_H, 2, &data[0]);
+    accel_bias_reg[1] = (long)(((short)data[0] << 8) | data[1]);
+    read_register(MPU9250_ZA_OFFSET_H, 2, &data[0]);
+    accel_bias_reg[2] = (long)(((short)data[0] << 8) | data[1]);
+
+    unsigned long mask =
+        1uL; // Define mask for temperature compensation bit 0 of lower byte of accelerometer bias registers
+    byte mask_bit[3] = {0, 0, 0}; // Define array to hold mask bit for each accelerometer bias axis
+
+    for (ii = 0; ii < 3; ii++)
+    {
+        if ((accel_bias_reg[ii] & mask))
+            mask_bit[ii] = 0x01; // If temperature compensation bit is set, record that fact in mask_bit
+    }
+
+    // ----- Construct total accelerometer bias, including calculated average accelerometer bias from above
+    accel_bias_reg[0] -=
+        (accel_bias[0] / 8); // Subtract calculated averaged accelerometer bias scaled to 2048 LSB/g (16 g full scale)
+    accel_bias_reg[1] -= (accel_bias[1] / 8);
+    accel_bias_reg[2] -= (accel_bias[2] / 8);
+
+    //    data[0] = (accel_bias_reg[0] >> 8) & 0xFF;
+    //    data[1] = (accel_bias_reg[0])      & 0xFF;
+    //    data[1] = data[1] | mask_bit[0];              // preserve temperature compensation bit when writing back to
+    //    accelerometer bias registers data[2] = (accel_bias_reg[1] >> 8) & 0xFF; data[3] = (accel_bias_reg[1])      &
+    //    0xFF; data[3] = data[3] | mask_bit[1];              // preserve temperature compensation bit when writing back
+    //    to accelerometer bias registers data[4] = (accel_bias_reg[2] >> 8) & 0xFF; data[5] = (accel_bias_reg[2]) &
+    //    0xFF; data[5] = data[5] | mask_bit[2];              // preserve temperature compensation bit when writing back
+    //    to accelerometer bias registers
+    //    //   Apparently this is not working for the acceleration biases in the MPU-9250
+    //    //   Are we handling the temperature correction bit properly?
+
+    data[0] = (accel_bias_reg[0] >> 8) & 0xFF;
+    data[1] = (accel_bias_reg[0]) & 0xFE;
+    data[1] = data[1] |
+              mask_bit[0]; // preserve temperature compensation bit when writing back to accelerometer bias registers
+    data[2] = (accel_bias_reg[1] >> 8) & 0xFF;
+    data[3] = (accel_bias_reg[1]) & 0xFE;
+    data[3] = data[3] |
+              mask_bit[1]; // preserve temperature compensation bit when writing back to accelerometer bias registers
+    data[4] = (accel_bias_reg[2] >> 8) & 0xFF;
+    data[5] = (accel_bias_reg[2]) & 0xFE;
+    data[5] = data[5] |
+              mask_bit[2]; // preserve temperature compensation bit when writing back to accelerometer bias registers
+    // see https://github.com/kriswiner/MPU9250/issues/215
+
+    // Push accelerometer biases to hardware registers
+    write_register(MPU9250_XA_OFFSET_H, data[0]);
+    write_register(MPU9250_XA_OFFSET_L, data[1]);
+    write_register(MPU9250_YA_OFFSET_H, data[2]);
+    write_register(MPU9250_YA_OFFSET_L, data[3]);
+    write_register(MPU9250_ZA_OFFSET_H, data[4]);
+    write_register(MPU9250_ZA_OFFSET_L, data[5]);
+
+    // ----- Output scaled accelerometer biases for display in the main program
+    accelBias[0] = (float)accel_bias[0] / (float)accelsensitivity;
+    accelBias[1] = (float)accel_bias[1] / (float)accelsensitivity;
+    accelBias[2] = (float)accel_bias[2] / (float)accelsensitivity;
+}
+
 inv_error_t MPU9250_DMP::dmpBegin(unsigned short features, unsigned short fifoRate)
 {
     unsigned short feat = features;
@@ -558,14 +730,13 @@ inv_error_t MPU9250_DMP::dmpEnable3Quat(void)
     return dmp_enable_lp_quat(1);
 }
 
-unsigned long MPU9250_DMP::dmpGetPedometerSteps(void)
+void MPU9250_DMP::dmpGetPedometerSteps(unsigned long& steps)
 {
-    unsigned long steps;
-    if (dmp_get_pedometer_step_count(&steps) == INV_SUCCESS)
+    const unsigned long s = steps;
+    if (dmp_get_pedometer_step_count(&steps) != INV_SUCCESS)
     {
-        return steps;
+        steps = s;
     }
-    return 0;
 }
 
 inv_error_t MPU9250_DMP::dmpSetPedometerSteps(unsigned long steps)
@@ -573,14 +744,13 @@ inv_error_t MPU9250_DMP::dmpSetPedometerSteps(unsigned long steps)
     return dmp_set_pedometer_step_count(steps);
 }
 
-unsigned long MPU9250_DMP::dmpGetPedometerTime(void)
+void MPU9250_DMP::dmpGetPedometerTime(unsigned long& time)
 {
-    unsigned long walkTime;
-    if (dmp_get_pedometer_walk_time(&walkTime) == INV_SUCCESS)
+    const unsigned long t = time;
+    if (dmp_get_pedometer_walk_time(&time) != INV_SUCCESS)
     {
-        return walkTime;
+        time = t;
     }
-    return 0;
 }
 
 inv_error_t MPU9250_DMP::dmpSetPedometerTime(unsigned long time)
@@ -668,7 +838,7 @@ float MPU9250_DMP::computeCompassHeading(void)
     else if (heading < 0)
         heading += 2 * PI;
 
-    heading *= 180.0 / PI;
+    heading *= RAD_TO_DEG;
 
     return heading;
 }

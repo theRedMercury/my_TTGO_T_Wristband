@@ -61,9 +61,11 @@ public:
         return _is_in_modem_sleep;
     }
 
+    void reset_mpu_step();
+
 private:
     auto _time_to_light_sleep() -> bool;
-    
+
     TaskHandle_t _handle_update_gui = NULL;
     TaskHandle_t _handle_update_gui_sec = NULL;
     TaskHandle_t _handle_update_mpu = NULL;

@@ -19,17 +19,28 @@ void mpu_manager::setup()
         }
     }
 
-    ulong s = _imu.dmpGetPedometerSteps();
-    if (s > 0 && s < 999999)
+    ulong s = 0;
+    _imu.dmpGetPedometerSteps(s);
+    if (s > 0 && s < 0xFFFFFF)
     {
+        DEBUG_PRINTLN("steps : " + String(s));
         steps = s;
     } else
     {
-        steps = epprom_mem::get_steps_mem();
+        const ulong ss = epprom_mem::get_steps_mem();
+        if (ss > 0 && ss < 0xFFFFFF)
+        {
+            steps = ss;
+        } else
+        {
+            steps = 0;
+        }
     }
+    DEBUG_PRINTLN("steps : " + String(steps));
 
-    s = _imu.dmpGetPedometerTime();
-    if (s > 0 && s < 999999)
+    s = 0;
+    _imu.dmpGetPedometerTime(s);
+    if (s > 0 && s < 0xFFFFFF)
     {
         step_time = s;
     } else
@@ -80,9 +91,16 @@ void mpu_manager::setup()
     _imu.dmpSetPedometerTime(step_time);
 }
 
+void mpu_manager::calibrate()
+{
+    _imu.calibrate();
+    setup();
+}
+
 void mpu_manager::update()
 {
-    if (_imu.dataReady())
+    if (_imu.dataReady() && _imu.fifoAvailable() && _imu.dmpUpdateFifo() == INV_SUCCESS &&
+        _imu.update(UPDATE_ACCEL | UPDATE_GYRO | UPDATE_COMPASS | UPDATE_TEMP) == INV_SUCCESS)
     {
         // Call update() to update the imu objects sensor data.
         // You can specify which sensors to update by combining
@@ -90,40 +108,33 @@ void mpu_manager::update()
         // UPDATE_TEMPERATURE.
         // (The update function defaults to accel, gyro, compass,
         //  so you don't have to specify these values.)
-        _imu.update(UPDATE_ACCEL | UPDATE_GYRO | UPDATE_COMPASS | UPDATE_TEMP);
 
         accelX = _imu.calcAccel(_imu.ax);
         accelY = _imu.calcAccel(_imu.ay);
         accelZ = _imu.calcAccel(_imu.az);
 
+        gyroX = _imu.calcGyro(_imu.gx);
+        gyroY = _imu.calcGyro(_imu.gy);
+        gyroZ = _imu.calcGyro(_imu.gz);
+
         magX = _imu.calcMag(_imu.mx);
         magY = _imu.calcMag(_imu.my);
         magZ = _imu.calcMag(_imu.mz);
+
+        // computeEulerAngles can be used -- after updating the
+        // quaternion values -- to estimate roll, pitch, and yaw
+        _imu.computeEulerAngles(true);
+        roll = _imu.roll;
+        pitch = _imu.pitch;
+        yaw = _imu.yaw;
+
         temp = static_cast<float>(_imu.temperature);
 
-        if (_imu.fifoAvailable())
-        {
-            // Use dmpUpdateFifo to update the ax, gx, mx, etc. values
-            if (_imu.dmpUpdateFifo() == INV_SUCCESS)
-            {
-                // computeEulerAngles can be used -- after updating the
-                // quaternion values -- to estimate roll, pitch, and yaw
-                _imu.computeEulerAngles(true);
+        _imu.computeCompassHeading();
 
-                roll = _imu.roll;
-                pitch = _imu.pitch;
-                yaw = _imu.yaw;
-
-                gyroX = _imu.calcGyro(_imu.gx);
-                gyroY = _imu.calcGyro(_imu.gy);
-                gyroZ = _imu.calcGyro(_imu.gz);
-                _imu.computeCompassHeading();
-
-                /*DEBUG_PRINTLN("R/P/Y: " + String(roll) + ", "
-                  + String(pitch) + ", " + String(yaw));*/
-                //  DEBUG_PRINTLN("heading: " + String(heading) );
-            }
-        }
+        /*DEBUG_PRINTLN("R/P/Y: " + String(roll) + ", "
+          + String(pitch) + ", " + String(yaw));*/
+        //  DEBUG_PRINTLN("heading: " + String(heading) );
 
         // float q0 = _imu.calcQuat(_imu.qw);
         // float q1 = _imu.calcQuat(_imu.qx);
@@ -131,8 +142,8 @@ void mpu_manager::update()
         // float q3 = _imu.calcQuat(_imu.qz);
     }
 
-    steps = _imu.dmpGetPedometerSteps();
-    step_time = _imu.dmpGetPedometerTime();
+    _imu.dmpGetPedometerSteps(steps);
+    _imu.dmpGetPedometerTime(step_time);
 }
 
 auto mpu_manager::get_heading() const -> int16_t

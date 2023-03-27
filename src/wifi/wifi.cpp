@@ -7,7 +7,7 @@ void wifi_manager::setup()
 {
     DEBUG_PRINT("wifi_manager setup : ");
     xSemaphoreTake(_lock, portMAX_DELAY);
-    _signal =  tools::clamp(static_cast<wifi_signal>(epprom_mem::get_wifi_mem()), wifi_signal::S_OFF, wifi_signal::S_ON);
+    _signal = tools::clamp(static_cast<wifi_signal>(epprom_mem::get_wifi_mem()), wifi_signal::S_OFF, wifi_signal::S_ON);
     _state_change = true;
     _need_update = true;
     xSemaphoreGive(_lock);

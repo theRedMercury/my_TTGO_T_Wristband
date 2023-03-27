@@ -373,7 +373,7 @@ void tft_screen::show_compass_page()
     const float angle_a = static_cast<float>(bearing) * DEG_TO_RAD;
     const float angle_b = 0; //_watch->mpu_m.get_pitch()* DEG_TO_RAD;
     //-tools::map(_watch->mpu_m.get_imu()->accel_z_mps2(), (float)-20, (float)20, -180, 180);
-    const float angle_c = _watch->mpu_m.get_roll() * DEG_TO_RAD;
+    const float angle_c = _watch->mpu_m.get_roll() * DEG_TO_RAD * -1.F;
     //_watch->mpu_m.get_imu()->pry_y() * RAD_TO_DEG;
     // tools::map(_watch->mpu_m.get_imu()->accel_x_mps2(), (float)-20, (float)20, -180, 180);
 
