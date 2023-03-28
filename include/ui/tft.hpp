@@ -24,7 +24,7 @@ public:
     void setup() override;
     void set_backlight(bool on = true) const;
     void clear();
-    void idle();
+    void idle(bool play_anim = false);
     void deep_sleep();
     void wake_up();
 
@@ -50,6 +50,8 @@ private:
     void _draw_date(const uint8_t day, const uint8_t month);
     void _draw_clock(const uint8_t hour, const uint8_t minute);
     void _draw_basic_wheater();
+
+    void _play_anime_close();
 
     static TFT_eSPI _tft;
 

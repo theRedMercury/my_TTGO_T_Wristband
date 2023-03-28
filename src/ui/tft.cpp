@@ -45,8 +45,11 @@ void tft_screen::clear()
     _y_time_pos = 0;
 }
 
-void tft_screen::idle()
+void tft_screen::idle(bool play_anim)
 {
+    if(play_anim){
+        _play_anime_close();
+    }
     // ledcSetup(8, 5000, 8);    // 0-15, 5000, 8
     // ledcAttachPin(TFT_BL, 8); // TFT_BL, 0 - 15
     // ledcWrite(8, 1);          // 0-15, 0-255 (with 8 bit resolution)
@@ -57,6 +60,19 @@ void tft_screen::idle()
     _is_in_idle = true;
 }
 void tft_screen::deep_sleep()
+{
+    _play_anime_close();
+    set_backlight(false);
+    //_tft.writecommand(ST7735_SWRESET); /* soft reset */
+    // delay(150);
+    _tft.writecommand(ST7735_SLPIN); /* sleep in */
+    delay(120);
+    _tft.writecommand(ST7735_DISPOFF); /* display off */
+    delay(120);
+    _is_in_idle = false;
+}
+
+void tft_screen::_play_anime_close()
 {
     for (int i = 0; i < TFT_HEIGHT / 2; ++i)
     {
@@ -73,15 +89,6 @@ void tft_screen::deep_sleep()
         _tft.drawFastVLine(TFT_WIDTH - i, 76, 8, TFT_BLACK);
         delay(2);
     }
-
-    set_backlight(false);
-    //_tft.writecommand(ST7735_SWRESET); /* soft reset */
-    // delay(150);
-    _tft.writecommand(ST7735_SLPIN); /* sleep in */
-    delay(120);
-    _tft.writecommand(ST7735_DISPOFF); /* display off */
-    delay(120);
-    _is_in_idle = false;
 }
 
 void tft_screen::wake_up()

@@ -111,7 +111,7 @@ void watch_manager::light_sleep()
 {
     wifi_m.deactivate(false);
     WiFi.setSleep(true);
-    screen.idle();
+    screen.idle(true);
 
     xSemaphoreTake(i2c_lock, portMAX_DELAY);
     const RTC_Date d = clk_m.get_clock_time();
@@ -151,6 +151,7 @@ void watch_manager::deep_sleep()
     xSemaphoreGive(i2c_lock);
 
     screen.deep_sleep();
+
     xSemaphoreTake(i2c_lock, portMAX_DELAY);
     mpu_m.light_sleep();
     xSemaphoreGive(i2c_lock);
