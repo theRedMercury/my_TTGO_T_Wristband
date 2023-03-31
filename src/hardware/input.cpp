@@ -1,6 +1,8 @@
 #include "hardware/input.hpp"
 #include "hardware/hal.hpp"
 #include "tools.hpp"
+#include "ui/ui_main.hpp"
+#include "watch/watch.hpp"
 
 constexpr auto LONG_PRESS = SEC_IN_MS * 1; // 1 sec
 
@@ -10,7 +12,7 @@ void input_manager::setup()
     pinMode(TP_PIN, GPIO_MODE_INPUT);
     pinMode(TP_PIN_POWER, PULLUP);
     digitalWrite(TP_PIN_POWER, HIGH);
-    _to_input.reset_delay();
+    _to_input.reset_delay(TIME_OUT_INPUT_TO_SLEEP_MS);
     DEBUG_PRINTLN("done");
 }
 
@@ -35,7 +37,9 @@ void input_manager::update()
                 _is_long_press = true;
             }
             _action_read = false;
-            _to_input.reset_delay();
+            /* Compass page -1 */
+            _to_input.reset_delay(_watch->ui_m.get_page() == ui_page::weather ? TIME_OUT_INPUT_TO_LONG_SLEEP_MS
+                                                                              : TIME_OUT_INPUT_TO_SLEEP_MS);
             _counter_long = 0;
         } else
         {
@@ -85,6 +89,7 @@ auto input_manager::is_time_out() -> bool
 void input_manager::reset_to()
 {
     xSemaphoreTake(_mutex, portMAX_DELAY);
-    _to_input.reset_delay();
+    _to_input.reset_delay(_watch->ui_m.get_page() == ui_page::compass ? TIME_OUT_INPUT_TO_LONG_SLEEP_MS
+                                                                      : TIME_OUT_INPUT_TO_SLEEP_MS);
     xSemaphoreGive(_mutex);
 }

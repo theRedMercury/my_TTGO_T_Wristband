@@ -47,7 +47,8 @@ void tft_screen::clear()
 
 void tft_screen::idle(bool play_anim)
 {
-    if(play_anim){
+    if (play_anim)
+    {
         _play_anime_close();
     }
     // ledcSetup(8, 5000, 8);    // 0-15, 5000, 8
@@ -359,7 +360,7 @@ void tft_screen::show_weather_page()
 
 void tft_screen::show_compass_page()
 {
-    const int16_t bearing = _watch->mpu_m.get_heading();
+    const int16_t bearing = _watch->mpu_m.get_yaw();
     char bearingText[5]{' ', ' ', ' ', ' ', ' '};
     if (bearing >= 0)
     {
@@ -378,7 +379,7 @@ void tft_screen::show_compass_page()
     //-tools::map(_watch->mpu_m.get_imu()->accel_y_mps2(), (float)-20, (float)20, -180, 180);
 
     const float angle_a = static_cast<float>(bearing) * DEG_TO_RAD;
-    const float angle_b = 0; //_watch->mpu_m.get_pitch()* DEG_TO_RAD;
+    const float angle_b = 0; //_watch->mpu_m.get_pitch() * DEG_TO_RAD;
     //-tools::map(_watch->mpu_m.get_imu()->accel_z_mps2(), (float)-20, (float)20, -180, 180);
     const float angle_c = _watch->mpu_m.get_roll() * DEG_TO_RAD * -1.F;
     //_watch->mpu_m.get_imu()->pry_y() * RAD_TO_DEG;

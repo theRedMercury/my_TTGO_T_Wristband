@@ -4,6 +4,7 @@
 #include "watch/watch_abs.hpp"
 
 constexpr auto TIME_OUT_INPUT_TO_SLEEP_MS = SEC_IN_MS * 15; // 15 sec
+constexpr auto TIME_OUT_INPUT_TO_LONG_SLEEP_MS = SEC_IN_MS * 60; // 60 sec
 
 enum class input_type : uint8_t
 {

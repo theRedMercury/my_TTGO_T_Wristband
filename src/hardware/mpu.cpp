@@ -127,14 +127,14 @@ void mpu_manager::update()
         roll = _imu.roll;
         pitch = _imu.pitch;
         yaw = _imu.yaw;
+        yaw = 360.F - yaw;
 
         temp = static_cast<float>(_imu.temperature);
 
         _imu.computeCompassHeading();
 
-        /*DEBUG_PRINTLN("R/P/Y: " + String(roll) + ", "
-          + String(pitch) + ", " + String(yaw));*/
-        //  DEBUG_PRINTLN("heading: " + String(heading) );
+        // DEBUG_PRINTLN("R/P/Y: " + String(roll) + ", " + String(pitch) + ", " + String(yaw));
+        // DEBUG_PRINTLN("heading: " + String(heading));
 
         // float q0 = _imu.calcQuat(_imu.qw);
         // float q1 = _imu.calcQuat(_imu.qx);
