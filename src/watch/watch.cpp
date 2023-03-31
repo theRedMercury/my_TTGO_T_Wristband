@@ -17,6 +17,8 @@ void watch_manager::setup()
     screen.set_backlight(esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER);
     ui_m.setup();
 
+    update_step();
+
     xTaskCreatePinnedToCore(&update_gui, "u_gui", 4096 * 4, this, 6, &_handle_update_gui, 0);
     xTaskCreatePinnedToCore(&update_gui_sec, "u_gui_sec", 2048, this, 5, &_handle_update_gui_sec, 0);
 
@@ -178,7 +180,8 @@ void watch_manager::deep_sleep()
     const ulong sec_sleep = (min_sleep * T_60) + (T_60 - c_sec);
 
     // Auto Wake up at 7h AM (sleep sec + (hour left * 60min * 60 sec * SEC_IN_MS))
-    esp_sleep_enable_timer_wakeup(((sec_sleep * SEC_IN_MS) + (((23 - c_hour) + 6) * T_60 * T_60 * SEC_IN_MS)) * 1000);
+    /*esp_sleep_enable_timer_wakeup(((sec_sleep * SEC_IN_MS) + (((23 - c_hour) + 6) * T_60 * T_60 * SEC_IN_MS)) *
+     * 1000);*/
 
     esp_sleep_enable_ext1_wakeup(GPIO_SEL_33, ESP_EXT1_WAKEUP_ANY_HIGH); //  | GPIO_SEL_39
     esp_deep_sleep_start();
